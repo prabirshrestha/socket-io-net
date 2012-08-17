@@ -1,4 +1,5 @@
-﻿using System;
+﻿using AspNetSample.samples.echo;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Web;
@@ -11,7 +12,7 @@ namespace AspNetSample
     {
         protected void Application_Start(object sender, EventArgs e)
         {
-
+            new EchoSample().Init();
         }
     }
 }

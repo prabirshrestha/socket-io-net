@@ -57,10 +57,11 @@ namespace SocketIoDotNet
         public Task<ResultTuple> App(IDictionary<string, object> environment, IDictionary<string, string[]> headers, Stream body)
         {
             var data = CheckRequest(environment, headers);
-            environment["socketiodotnet.HostProtocol"] = data.SocketIoProtcol = Protocol;
+            data.Config = _config;
+            environment["socketiodotnet.HostProtocol"] = data.HostProtocol = Protocol;
             environment["socketiodotnet.Transports"] = _config.Transports;
 
-            if (data.IsStatic || string.IsNullOrEmpty(data.Transport) && data.Protocol == 0)
+            if (data.IsStatic || string.IsNullOrEmpty(data.Transport) && data.RequestProtocol == 0)
             {
                 var browserClient = true;
                 if (data.IsStatic && browserClient)
@@ -81,7 +82,7 @@ namespace SocketIoDotNet
                 }
             }
 
-            if (data.Protocol != Protocol)
+            if (data.RequestProtocol != Protocol)
                 return StringResultTuple("Protocol version not supported", 500);
 
             return string.IsNullOrEmpty(data.Id)
@@ -119,7 +120,7 @@ namespace SocketIoDotNet
                         }
                     }
 
-                    environment["socketiodotnet.Protocol"] = data.Protocol = protocol;
+                    environment["socketiodotnet.RequestProtocol"] = data.RequestProtocol = protocol;
                 }
 
                 data.IsStatic = match;
@@ -172,7 +173,7 @@ namespace SocketIoDotNet
 
             try
             {
-                return await transport.HandleRequest(data.Id, environment, headers, body);
+                return await transport.HandleRequest(data, environment, headers, body);
             }
             catch (Exception ex)
             {
@@ -228,19 +229,15 @@ namespace SocketIoDotNet
             return Task.FromResult<ResultTuple>(resultTuple);
         }
 
-
-
-        private class SocketIoRequestData
+        internal static Task<ResultTuple> StringResponseResult(SocketIoRequestData data, string str)
         {
-            public string Path;
-            public string Transport;
-            public int Protocol;
-            public string Id;
-
-            public int SocketIoProtcol;
-
-            internal bool IsStatic;
-
+            return StringResultTuple(
+                string.Format("{0}:{1}:{2}:{3}",
+                              data.RequestProtocol,
+                              data.Config.GetHeartbeatStringValue(),
+                              data.Config.GetCloseTimeoutStringValue(), 
+                              str),
+                200);
         }
     }
 }

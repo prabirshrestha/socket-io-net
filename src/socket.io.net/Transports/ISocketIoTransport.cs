@@ -16,6 +16,6 @@ namespace SocketIoDotNet.Transports
     {
         string Name { get; }
 
-        Task<ResultTuple> HandleRequest(string id, IDictionary<string, object> environment, IDictionary<string, string[]> headers, Stream body);
+        Task<ResultTuple> HandleRequest(SocketIoRequestData data, IDictionary<string, object> environment, IDictionary<string, string[]> headers, Stream body);
     }
 }

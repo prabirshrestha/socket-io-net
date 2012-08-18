@@ -1,7 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 using ResultTuple = System.Tuple< //Result
@@ -21,9 +19,9 @@ namespace SocketIoDotNet.Transports
             get { return "xhr-polling"; }
         }
 
-        public Task<ResultTuple> HandleRequest(string id, IDictionary<string, object> environment, IDictionary<string, string[]> headers, System.IO.Stream body)
+        public Task<ResultTuple> HandleRequest(SocketIoRequestData data, IDictionary<string, object> environment, IDictionary<string, string[]> headers, System.IO.Stream body)
         {
-            throw new NotImplementedException();
+            return SocketIo.StringResponseResult(data, string.Empty);
         }
     }
 }

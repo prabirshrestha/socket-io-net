@@ -58,7 +58,7 @@ namespace SocketIoDotNet
                 else if (transports.Length == 0)
                 {
                     transports = DefaultTransports;
-                    UpdateInternalTransportData(transports);            
+                    UpdateInternalTransportData(transports);
                 }
 
                 return _transports = transports;
@@ -69,6 +69,16 @@ namespace SocketIoDotNet
         public int? Heartbeats { get; set; }
 
         public int? CloseTimeout { get; set; }
+
+        internal string GetHeartbeatStringValue()
+        {
+            return Heartbeats.HasValue ? Heartbeats.Value.ToString(CultureInfo.InvariantCulture) : "";
+        }
+
+        internal string GetCloseTimeoutStringValue()
+        {
+            return CloseTimeout.HasValue ? CloseTimeout.Value.ToString(CultureInfo.InvariantCulture) : "";
+        }
 
         public bool HostSupportsWebSockets
         {
@@ -85,13 +95,13 @@ namespace SocketIoDotNet
             return Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
         }
 
-        private  void UpdateInternalTransportData(ISocketIoTransport[] transports)
+        private void UpdateInternalTransportData(ISocketIoTransport[] transports)
         {
             TransportDictionary.Clear();
 
             foreach (var transport in transports)
             {
-                if(!HostSupportsWebSockets && transport.Name == "websocket")
+                if (!HostSupportsWebSockets && transport.Name == "websocket")
                     continue;
                 TransportDictionary[transport.Name] = transport;
             }

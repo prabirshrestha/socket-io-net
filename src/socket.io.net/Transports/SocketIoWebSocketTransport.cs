@@ -19,7 +19,7 @@ namespace SocketIoDotNet.Transports
             get { return "websocket"; }
         }
 
-        public Task<ResultTuple> HandleRequest(string id, IDictionary<string, object> environment, IDictionary<string, string[]> headers, System.IO.Stream body)
+        public Task<ResultTuple> HandleRequest(SocketIoRequestData data, IDictionary<string, object> environment, IDictionary<string, string[]> headers, System.IO.Stream body)
         {
             throw new NotImplementedException();
         }

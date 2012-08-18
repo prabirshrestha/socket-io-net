@@ -40,49 +40,13 @@ namespace SocketIoDotNet
 {
     public class SocketIo
     {
-        private readonly SocketIoConfig _config;
-        private readonly IdGeneratorFunc _idGenerator;
-        private readonly IDictionary<string, ISocketIoTransport> _transports;
-        private readonly string _transportCommaList;
+        private readonly SocketIoConfig _config = new SocketIoConfig();
 
-        private static readonly IEnumerable<ISocketIoTransport> DefaultTransports =
-            new ISocketIoTransport[] 
-            { 
-                new SocketIoWebSocketTransport(),
-                new SocketIoHtmlFileTransport(),
-                new SocketIoXhrPollingTransport(),
-                new SocketIoJsonpTransport(),
-            };
-
-        public SocketIo()
-            : this(new SocketIoConfig())
+        public SocketIo Configure(Action<SocketIoConfig> config)
         {
-        }
-
-        public SocketIo(SocketIoConfig config)
-        {
-            if (config == null)
-                throw new ArgumentNullException("config");
-
-            _config = config;
-            _idGenerator = config.IdGenerator ?? DefaultIdGenerator;
-
-            var transports = config.Transports ?? DefaultTransports;
-
-            _transports = new Dictionary<string, ISocketIoTransport>();
-
-            // cache transports in dictionary for faster lookup
-            foreach (var transport in transports)
-            {
-                if (transport == null)
-                    continue;
-                if(!_config.HostSupportsWebSockets && transport.Name == "websocket")
-                    continue;
-                _transports[transport.Name] = transport;
-            }
-
-            // cache so we don't have to join for every request
-            _transportCommaList = string.Join(",", _transports.Keys);
+            if (config == null) throw new ArgumentNullException("config");
+            config(_config);
+            return this;
         }
 
         public int Protocol
@@ -94,7 +58,7 @@ namespace SocketIoDotNet
         {
             var data = CheckRequest(environment, headers);
             environment["socketiodotnet.HostProtocol"] = data.SocketIoProtcol = Protocol;
-            environment["socketiodotnet.Transports"] = _transports;
+            environment["socketiodotnet.Transports"] = _config.Transports;
 
             if (data.IsStatic || string.IsNullOrEmpty(data.Transport) && data.Protocol == 0)
             {
@@ -179,13 +143,13 @@ namespace SocketIoDotNet
                 return await StringResultTuple("handshake unauthorized", 403);
             }
 
-            var id = _idGenerator(environment, headers);
+            var id = _config.IdGenerator(environment, headers);
 
             var hs = string.Join(":",
                 id,
                 _config.Heartbeats.HasValue ? _config.Heartbeats.Value.ToString(CultureInfo.InvariantCulture) : string.Empty,
                 _config.CloseTimeout.HasValue ? _config.CloseTimeout.Value.ToString(CultureInfo.InvariantCulture) : string.Empty,
-                _transportCommaList);
+                _config.TransportsStringList);
 
             var jsonP = false;
 
@@ -202,8 +166,8 @@ namespace SocketIoDotNet
 
         private async Task<ResultTuple> HandleHttpRequest(SocketIoRequestData data, IDictionary<string, object> environment, IDictionary<string, string[]> headers, Stream body)
         {
-            ISocketIoTransport transport = null;
-            if (!_transports.TryGetValue(data.Transport, out transport))
+            ISocketIoTransport transport;
+            if (!_config.TransportDictionary.TryGetValue(data.Transport, out transport))
                 return await StringResultTuple("transport not supported", 500);
 
             try
@@ -212,7 +176,7 @@ namespace SocketIoDotNet
             }
             catch (Exception ex)
             {
-                throw new NotImplementedException();
+                throw new NotImplementedException("not implemented", ex);
             }
         }
 
@@ -264,10 +228,7 @@ namespace SocketIoDotNet
             return Task.FromResult<ResultTuple>(resultTuple);
         }
 
-        internal static string DefaultIdGenerator(IDictionary<string, object> environment, IDictionary<string, string[]> headers)
-        {
-            return Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
-        }
+
 
         private class SocketIoRequestData
         {

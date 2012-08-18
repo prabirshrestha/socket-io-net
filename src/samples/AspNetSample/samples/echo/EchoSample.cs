@@ -14,11 +14,13 @@ namespace AspNetSample.samples.echo
         {
             const string root = "samples/echo/socketiodotnet";
 
-            var io = new SocketIo(new SocketIoConfig
-            {
-                Heartbeats = 25,
-                CloseTimeout = 60
-            });
+            var io = new SocketIo();
+
+            io.Configure(config =>
+                             {
+                                 config.Heartbeats = 25;
+                                 config.CloseTimeout = 60;
+                             });
 
             RouteTable.Routes.Add(new Route(root + "/{*pathInfo}", new SimpleOwinAspNetRouteHandler(io.App, root)));
         }

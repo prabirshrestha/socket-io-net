@@ -20,7 +20,7 @@ namespace SocketIoDotNet.Transports
             get { return "jsonp-polling"; }
         }
 
-        public async Task<ResultTuple> HandleRequest(string id, IDictionary<string, object> environment, IDictionary<string, string[]> headers, Stream body)
+        public Task<ResultTuple> HandleRequest(string id, IDictionary<string, object> environment, IDictionary<string, string[]> headers, Stream body)
         {
             throw new NotImplementedException();
         }

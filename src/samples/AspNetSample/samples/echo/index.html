@@ -9,12 +9,13 @@
     <input type="text" style="width:400px" /> 
     <input type="button" value="Send" />
 
-    <script src="socketiodotnet/socket.io.min.js"></script>
+    <script src="socketiodotnet/socket.io.js"></script>
 
     <script>
         var socket = io.connect('http://localhost', {
             resource: 'AspNetSocketIoSample/samples/echo/socketiodotnet'
         });
+
     </script>
 </body>
 </html>

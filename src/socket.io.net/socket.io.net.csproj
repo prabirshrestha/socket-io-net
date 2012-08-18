@@ -43,7 +43,10 @@
     <Compile Include="SocketIo.cs" />
     <Compile Include="SocketIoConfig.cs" />
     <Compile Include="Transports\ISocketIoTransport.cs" />
+    <Compile Include="Transports\SocketIoHtmlFileTransport.cs" />
     <Compile Include="Transports\SocketIoJsonpTransport.cs" />
+    <Compile Include="Transports\SocketIoWebSocketTransport.cs" />
+    <Compile Include="Transports\SocketIoXhrPollingTransport.cs" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="assets\socket.io.js" />

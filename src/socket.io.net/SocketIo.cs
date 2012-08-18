@@ -45,11 +45,15 @@ namespace SocketIoDotNet
         private readonly IdGeneratorFunc _idGenerator;
         private readonly IDictionary<string, ISocketIoTransport> _transports;
         private readonly string _transportCommaList;
+        private readonly string[] _tranportArrays;
 
         private static readonly IEnumerable<ISocketIoTransport> DefaultTransports =
-            new[] 
+            new ISocketIoTransport[] 
             { 
-                new SocketIoJsonpTransport()
+                new SocketIoWebSocketTransport(),
+                new SocketIoHtmlFileTransport(),
+                new SocketIoXhrPollingTransport(),
+                new SocketIoJsonpTransport(),
             };
 
         public SocketIo()
@@ -71,10 +75,15 @@ namespace SocketIoDotNet
 
             // cache transports in dictionary for faster lookup
             foreach (var transport in transports)
+            {
+                if (transport == null)
+                    continue;
                 _transports[transport.Name] = transport;
+            }
 
             // cache so we don't have to join for every request
             _transportCommaList = string.Join(",", _transports.Keys);
+            _tranportArrays = _transports.Keys.ToArray();
         }
 
         public int Protocol
@@ -85,6 +94,11 @@ namespace SocketIoDotNet
         public Task<ResultTuple> App(IDictionary<string, object> environment, IDictionary<string, string[]> headers, Stream body)
         {
             var data = CheckRequest(environment, headers);
+            environment["socketiodotnet.HostProtocol"] = data.SocketIoProtcol = Protocol;
+            environment["socketiodotnet.Transports"] = _transports;
+
+            //environment["socketionet.Transports"] = _transports.Keys.ToArray();
+
             if (data.IsStatic || string.IsNullOrEmpty(data.Transport) && data.Protocol == 0)
             {
                 var browserClient = true;
@@ -117,18 +131,19 @@ namespace SocketIoDotNet
             throw new NotImplementedException();
         }
 
-        private RequestData CheckRequest(IDictionary<string, object> environment, IDictionary<string, string[]> headers)
+        private static SocketIoRequestData CheckRequest(IDictionary<string, object> environment, IDictionary<string, string[]> headers)
         {
-            var requestData = new RequestData();
+            var data = new SocketIoRequestData();
 
             var path = (string)environment["owin.RequestPath"];
-            requestData.Path = path;
+            data.Path = path;
 
             var match = path.IndexOf("/socket.io") >= 0;
 
             var pieces = path.Split('/');
 
-            requestData.Path = path;
+            environment["socketiodotnet.RequestPath"] = data.Path = path;
+
             if (path.IndexOf("/") == 0)
             {
                 if (!match)
@@ -140,22 +155,23 @@ namespace SocketIoDotNet
 
                         if (pieces.Length > 2)
                         {
-                            requestData.Transport = pieces[2];
+                            environment["socketiodotnet.Transport"] = data.Transport = pieces[2];
                             if (pieces.Length > 3)
-                                requestData.Id = pieces[3];
+                                environment["socketiodotnet.Id"] = data.Id = pieces[3];
                         }
                     }
 
-                    requestData.Protocol = protocol;
+                    environment["socketiodotnet.Protocol"] = data.Protocol = protocol;
                 }
 
-                requestData.IsStatic = match;
+                data.IsStatic = match;
             }
 
-            return requestData;
+
+            return data;
         }
 
-        private async Task<ResultTuple> HandleHandshake(RequestData data, IDictionary<string, object> environment, IDictionary<string, string[]> headers, Stream body)
+        private async Task<ResultTuple> HandleHandshake(SocketIoRequestData data, IDictionary<string, object> environment, IDictionary<string, string[]> headers, Stream body)
         {
             string error;
             bool authorized = await OnAuthorize(environment, headers, out error);
@@ -174,8 +190,8 @@ namespace SocketIoDotNet
 
             var hs = string.Join(":",
                 id,
-                _config.Heartbeats,
-                _config.CloseTimeout,
+                _config.Heartbeats == 0 ? "" : _config.Heartbeats.ToString(),
+                _config.CloseTimeout == 0 ? "" : _config.CloseTimeout.ToString(),
                 _transportCommaList);
 
             var jsonP = false;
@@ -191,9 +207,20 @@ namespace SocketIoDotNet
             }
         }
 
-        private Task<ResultTuple> HandleHttpRequest(RequestData data, IDictionary<string, object> environment, IDictionary<string, string[]> headers, Stream body)
+        private async Task<ResultTuple> HandleHttpRequest(SocketIoRequestData data, IDictionary<string, object> environment, IDictionary<string, string[]> headers, Stream body)
         {
-            throw new NotImplementedException();
+            ISocketIoTransport transport = null;
+            if (!_transports.TryGetValue(data.Transport, out transport))
+                return await StringResultTuple("transport not supported", 500);
+
+            try
+            {
+                return await transport.HandleRequest(data.Id, environment, headers, body);
+            }
+            catch (Exception ex)
+            {
+                throw new NotImplementedException();
+            }
         }
 
         protected virtual Task<bool> OnAuthorize(IDictionary<string, object> environment, IDictionary<string, string[]> headers, out string error)
@@ -224,7 +251,7 @@ namespace SocketIoDotNet
             return Task.FromResult<ResultTuple>(resultTuple);
         }
 
-        private static Task<ResultTuple> StringResultTuple(string str, int statusCode, string contentType = "text/plain")
+        internal static Task<ResultTuple> StringResultTuple(string str, int statusCode, string contentType = "text/plain")
         {
             var owinResponseProperties = new Dictionary<string, object>();
             var owinResponseStatus = statusCode;
@@ -249,13 +276,17 @@ namespace SocketIoDotNet
             return Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
         }
 
-        private class RequestData
+        private class SocketIoRequestData
         {
             public string Path;
             public string Transport;
             public int Protocol;
-            public bool IsStatic;
             public string Id;
+
+            public int SocketIoProtcol;
+
+            internal bool IsStatic;
+
         }
     }
 }

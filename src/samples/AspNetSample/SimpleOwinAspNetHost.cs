@@ -122,7 +122,7 @@ namespace SimpleOwinAspNetHost
     public class SimpleOwinAspNetHandler : IHttpAsyncHandler
     {
         private readonly AppAction _app;
-        private string _root;
+        private readonly string _root;
 
         public SimpleOwinAspNetHandler()
             : this(null)
@@ -202,7 +202,7 @@ namespace SimpleOwinAspNetHost
 
 #if ASPNET_WEBSOCKETS
             if (context.IsWebSocketRequest)
-                env[OwinConstants.WebSocketSupport] = "WebSocket";
+                env[OwinConstants.WebSocketSupport] = "WebSocketFunc";
 #endif
 
             foreach (var kv in serverVarsToAddToEnv)
@@ -340,6 +340,16 @@ namespace SimpleOwinAspNetHost
             }
         }
 
+        public static IDictionary<string, object> GetStartupProperties()
+        {
+            var properties = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            properties[OwinConstants.Version] = "1.0";
+#if ASPNET_WEBSOCKETS
+            properties[OwinConstants.WebSocketSupport] = "WebSocketFunc";
+#endif
+            return properties;
+        }
+
 #if ASPNET_WEBSOCKETS
 
         private static WebSocketSendAsync WebSocketSendAsync(WebSocket webSocket)
@@ -351,15 +361,15 @@ namespace SimpleOwinAspNetHost
         private static WebSocketReceiveAsync WebSocketReceiveAsync(WebSocket webSocket)
         {
             return async (buffer, cancel) =>
-                {
-                    var nativeResult = await webSocket.ReceiveAsync(buffer, cancel);
-                    return new WebSocketReceiveResultTuple(
-                        EnumToOpCode(nativeResult.MessageType),
-                        nativeResult.EndOfMessage,
-                        (nativeResult.MessageType == WebSocketMessageType.Close ? null : (int?)nativeResult.Count),
-                        (int?)nativeResult.CloseStatus,
-                        nativeResult.CloseStatusDescription);
-                };
+            {
+                var nativeResult = await webSocket.ReceiveAsync(buffer, cancel);
+                return new WebSocketReceiveResultTuple(
+                    EnumToOpCode(nativeResult.MessageType),
+                    nativeResult.EndOfMessage,
+                    (nativeResult.MessageType == WebSocketMessageType.Close ? null : (int?)nativeResult.Count),
+                    (int?)nativeResult.CloseStatus,
+                    nativeResult.CloseStatusDescription);
+            };
         }
 
         private static WebSocketCloseAsync WebSocketCloseAsync(WebSocket webSocket)

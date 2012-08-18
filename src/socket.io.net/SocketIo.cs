@@ -112,14 +112,46 @@ namespace SocketIoDotNet
             return requestData;
         }
 
-        private Task<ResultTuple> HandleHandshake(RequestData data, IDictionary<string, object> environment, IDictionary<string, string[]> headers, Stream body)
+        private async Task<ResultTuple> HandleHandshake(RequestData data, IDictionary<string, object> environment, IDictionary<string, string[]> headers, Stream body)
         {
+            string error;
+            bool authorized = await OnAuthorize(environment, headers, out error);
+
+            var owinResponseProperties = new Dictionary<string, object>();
+            var owinResponseStatus = 200;
+            var owinResponseHeaders = new Dictionary<string, string[]>();
+            owinResponseHeaders.Add("Content-Type", new[] { "text/plain" });
+
+            if (!string.IsNullOrEmpty(error))
+            {
+                return await StringResultTuple(error, 500);
+            }
+
+            if (!authorized)
+            {
+                return await StringResultTuple("handshake unauthorized", 403);
+            }
+               
+            var id = GenerateId(environment, headers);
+            
+
             throw new NotImplementedException();
         }
 
         private Task<ResultTuple> HandleHttpRequest(RequestData data, IDictionary<string, object> environment, IDictionary<string, string[]> headers, Stream body)
         {
             throw new NotImplementedException();
+        }
+
+        protected virtual Task<bool> OnAuthorize(IDictionary<string, object> environment, IDictionary<string, string[]> headers, out string error)
+        {
+            error = null;
+            return Task.FromResult<bool>(true);
+        }
+
+        protected string GenerateId(IDictionary<string, object> environment, IDictionary<string, string[]> headers)
+        {
+            return "idnumber1";
         }
 
         private static Task<ResultTuple> AssetResultTuple(string assetName, string contentType)

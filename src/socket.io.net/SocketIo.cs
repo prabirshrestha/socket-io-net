@@ -5,6 +5,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Reflection;
+using System.Globalization;
+using SocketIoDotNet.Transports;
 
 using AppAction = System.Func< // Call
         System.Collections.Generic.IDictionary<string, object>, // Environment
@@ -30,11 +32,25 @@ using BodyAction = System.Func< // CopyTo
     System.IO.Stream, // Body
     System.Threading.Tasks.Task>; // Done
 
+using IdGeneratorFunc = System.Func<
+    System.Collections.Generic.IDictionary<string, object>, // environment
+    System.Collections.Generic.IDictionary<string, string[]>, // headers
+    string>; // id
+
 namespace SocketIoDotNet
 {
     public class SocketIo
     {
-        private SocketIoConfig _config;
+        private readonly SocketIoConfig _config;
+        private readonly IdGeneratorFunc _idGenerator;
+        private readonly IDictionary<string, ISocketIoTransport> _transports;
+        private readonly string _transportCommaList;
+
+        private static readonly IEnumerable<ISocketIoTransport> DefaultTransports =
+            new[] 
+            { 
+                new SocketIoJsonpTransport()
+            };
 
         public SocketIo()
             : this(new SocketIoConfig())
@@ -47,6 +63,18 @@ namespace SocketIoDotNet
                 throw new ArgumentNullException("config");
 
             _config = config;
+            _idGenerator = config.GenerateId ?? DefaultIdGenerator;
+
+            var transports = config.Transports ?? DefaultTransports;
+
+            _transports = new Dictionary<string, ISocketIoTransport>();
+
+            // cache transports in dictionary for faster lookup
+            foreach (var transport in transports)
+                _transports[transport.Name] = transport;
+
+            // cache so we don't have to join for every request
+            _transportCommaList = string.Join(",", _transports.Keys);
         }
 
         public int Protocol
@@ -132,11 +160,6 @@ namespace SocketIoDotNet
             string error;
             bool authorized = await OnAuthorize(environment, headers, out error);
 
-            var owinResponseProperties = new Dictionary<string, object>();
-            var owinResponseStatus = 200;
-            var owinResponseHeaders = new Dictionary<string, string[]>();
-            owinResponseHeaders.Add("Content-Type", new[] { "text/plain" });
-
             if (!string.IsNullOrEmpty(error))
             {
                 return await StringResultTuple(error, 500);
@@ -147,10 +170,25 @@ namespace SocketIoDotNet
                 return await StringResultTuple("handshake unauthorized", 403);
             }
 
-            var id = _config.GenerateId(environment, headers);
+            var id = _idGenerator(environment, headers);
 
+            var hs = string.Join(":",
+                id,
+                _config.Heartbeats,
+                _config.CloseTimeout,
+                _transportCommaList);
 
-            throw new NotImplementedException();
+            var jsonP = false;
+
+            if (jsonP)
+            {
+                throw new NotImplementedException();
+                return await StringResultTuple("todo", 200, "application/javascript");
+            }
+            else
+            {
+                return await StringResultTuple(hs, 200);
+            }
         }
 
         private Task<ResultTuple> HandleHttpRequest(RequestData data, IDictionary<string, object> environment, IDictionary<string, string[]> headers, Stream body)
@@ -186,12 +224,12 @@ namespace SocketIoDotNet
             return Task.FromResult<ResultTuple>(resultTuple);
         }
 
-        private static Task<ResultTuple> StringResultTuple(string str, int statusCode)
+        private static Task<ResultTuple> StringResultTuple(string str, int statusCode, string contentType = "text/plain")
         {
             var owinResponseProperties = new Dictionary<string, object>();
             var owinResponseStatus = statusCode;
             var owinResponseHeaders = new Dictionary<string, string[]>();
-            owinResponseHeaders.Add("Content-Type", new[] { "text/plain" });
+            owinResponseHeaders.Add("Content-Type", new[] { contentType });
 
             var resultTuple = new ResultTuple(
                 owinResponseProperties,
@@ -204,6 +242,11 @@ namespace SocketIoDotNet
                 });
 
             return Task.FromResult<ResultTuple>(resultTuple);
+        }
+
+        internal static string DefaultIdGenerator(IDictionary<string, object> environment, IDictionary<string, string[]> headers)
+        {
+            return Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
         }
 
         private class RequestData

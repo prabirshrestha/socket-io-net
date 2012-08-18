@@ -42,6 +42,8 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="SocketIo.cs" />
     <Compile Include="SocketIoConfig.cs" />
+    <Compile Include="Transports\ISocketIoTransport.cs" />
+    <Compile Include="Transports\SocketIoJsonpTransport.cs" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="assets\socket.io.js" />

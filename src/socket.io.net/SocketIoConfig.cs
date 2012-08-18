@@ -1,5 +1,7 @@
-﻿using System;
+﻿using SocketIoDotNet.Transports; // generated id
+using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -7,23 +9,42 @@ using System.Threading.Tasks;
 using IdGeneratorFunc = System.Func<
     System.Collections.Generic.IDictionary<string, object>, // environment
     System.Collections.Generic.IDictionary<string, string[]>, // headers
-    string>; // generated id
+    string>; // id
 
 namespace SocketIoDotNet
 {
     public class SocketIoConfig
     {
-        private IdGeneratorFunc _generateId = DefaultIdGenerator;
+        private const int DefaultHeartbeats = 25;
+        private const int DefaultCloseTimeout = 60;
 
-        public IdGeneratorFunc GenerateId
+        private int _heartbeats = DefaultHeartbeats;
+        private int _closeTimeout = DefaultCloseTimeout;
+
+        public IEnumerable<ISocketIoTransport> Transports { get; set; }
+
+        public IdGeneratorFunc GenerateId { get; set; }
+
+        public int Heartbeats
         {
-            get { return _generateId ?? (_generateId = DefaultIdGenerator); }
-            set { _generateId = value; }
+            get
+            {
+                if (_heartbeats < 0)
+                    _heartbeats = DefaultHeartbeats;
+                return _heartbeats;
+            }
+            set { _heartbeats = value; }
         }
 
-        private static string DefaultIdGenerator(IDictionary<string, object> environment, IDictionary<string, string[]> headers)
+        public int CloseTimeout
         {
-            return "autogenid1";
+            get
+            {
+                if (_closeTimeout < 0)
+                    _closeTimeout = DefaultCloseTimeout;
+                return _closeTimeout;
+            }
+            set { _closeTimeout = value; }
         }
     }
 }

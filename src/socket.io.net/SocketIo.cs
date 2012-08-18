@@ -34,6 +34,21 @@ namespace SocketIoDotNet
 {
     public class SocketIo
     {
+        private SocketIoConfig _config;
+
+        public SocketIo()
+            : this(new SocketIoConfig())
+        {
+        }
+
+        public SocketIo(SocketIoConfig config)
+        {
+            if (config == null)
+                throw new ArgumentNullException("config");
+
+            _config = config;
+        }
+
         public int Protocol
         {
             get { return 1; }
@@ -131,9 +146,9 @@ namespace SocketIoDotNet
             {
                 return await StringResultTuple("handshake unauthorized", 403);
             }
-               
-            var id = GenerateId(environment, headers);
-            
+
+            var id = _config.GenerateId(environment, headers);
+
 
             throw new NotImplementedException();
         }
@@ -147,11 +162,6 @@ namespace SocketIoDotNet
         {
             error = null;
             return Task.FromResult<bool>(true);
-        }
-
-        protected string GenerateId(IDictionary<string, object> environment, IDictionary<string, string[]> headers)
-        {
-            return "idnumber1";
         }
 
         private static Task<ResultTuple> AssetResultTuple(string assetName, string contentType)

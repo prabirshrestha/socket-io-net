@@ -44,8 +44,12 @@ namespace SocketIoDotNet
         private readonly SocketIoConfig _config;
         private readonly IdGeneratorFunc _idGenerator;
         private readonly IDictionary<string, ISocketIoTransport> _transports;
+        private readonly IDictionary<string, ISocketIoTransport> _transportsWithoutWebSockets;
         private readonly string _transportCommaList;
+        private readonly string _transportCommaListWithoutWebSockets;
         private readonly string[] _tranportArrays;
+        private readonly string[] _tranportArraysWithoutWebSockets;
+
 
         private static readonly IEnumerable<ISocketIoTransport> DefaultTransports =
             new ISocketIoTransport[] 
@@ -72,18 +76,24 @@ namespace SocketIoDotNet
             var transports = config.Transports ?? DefaultTransports;
 
             _transports = new Dictionary<string, ISocketIoTransport>();
+            _transportsWithoutWebSockets = new Dictionary<string, ISocketIoTransport>();
 
             // cache transports in dictionary for faster lookup
             foreach (var transport in transports)
             {
                 if (transport == null)
                     continue;
+                if (transport.Name != "websocket")
+                    _transportsWithoutWebSockets[transport.Name] = transport;
                 _transports[transport.Name] = transport;
             }
 
             // cache so we don't have to join for every request
             _transportCommaList = string.Join(",", _transports.Keys);
+            _transportCommaListWithoutWebSockets = string.Join(",", _transportsWithoutWebSockets.Keys);
+
             _tranportArrays = _transports.Keys.ToArray();
+            _tranportArraysWithoutWebSockets = _transportsWithoutWebSockets.Keys.ToArray();
         }
 
         public int Protocol
@@ -108,9 +118,9 @@ namespace SocketIoDotNet
                         return AssetResultTuple("SocketIoDotNet.assets.socket.io.min.js", "text/javascript");
                     if (data.Path == "/socket.io.js")
                         return AssetResultTuple("SocketIoDotNet.assets.socket.io.js", "text/javascript");
-                    if (data.Path == "WebSocketMain.swf")
+                    if (data.Path == "/WebSocketMain.swf")
                         return AssetResultTuple("SocketIoDotNet.assets.WebSocketMain.swf", "application/x-shockwave-flash");
-                    if (data.Path == "WebSocketMainInsecure.swf")
+                    if (data.Path == "/WebSocketMainInsecure.swf")
                         return AssetResultTuple("SocketIoDotNet.assets.WebSocketMainInsecure.swf", "application/x-shockwave-flash");
                     return StringResultTuple(":( not found", 404);
                 }
@@ -192,7 +202,7 @@ namespace SocketIoDotNet
                 id,
                 _config.Heartbeats == 0 ? "" : _config.Heartbeats.ToString(),
                 _config.CloseTimeout == 0 ? "" : _config.CloseTimeout.ToString(),
-                _transportCommaList);
+                _transportCommaListWithoutWebSockets);
 
             var jsonP = false;
 

@@ -1,12 +1,11 @@
-﻿using System;
+﻿using SocketIoDotNet.Transports;
+using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
-using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
-using System.Reflection;
-using System.Globalization;
-using SocketIoDotNet.Transports;
 
 using AppAction = System.Func< // Call
         System.Collections.Generic.IDictionary<string, object>, // Environment
@@ -20,14 +19,6 @@ using AppAction = System.Func< // Call
                 System.IO.Stream, // Body
                 System.Threading.Tasks.Task>>>>; // Done
 
-using ResultTuple = System.Tuple< //Result
-    System.Collections.Generic.IDictionary<string, object>, // Properties
-    int, // Status
-    System.Collections.Generic.IDictionary<string, string[]>, // Headers
-    System.Func< // CopyTo
-        System.IO.Stream, // Body
-        System.Threading.Tasks.Task>>; // Done
-
 using BodyAction = System.Func< // CopyTo
     System.IO.Stream, // Body
     System.Threading.Tasks.Task>; // Done
@@ -37,6 +28,14 @@ using IdGeneratorFunc = System.Func<
     System.Collections.Generic.IDictionary<string, string[]>, // headers
     string>; // id
 
+using ResultTuple = System.Tuple< //Result
+    System.Collections.Generic.IDictionary<string, object>, // Properties
+    int, // Status
+    System.Collections.Generic.IDictionary<string, string[]>, // Headers
+    System.Func< // CopyTo
+        System.IO.Stream, // Body
+        System.Threading.Tasks.Task>>; // Done
+
 namespace SocketIoDotNet
 {
     public class SocketIo
@@ -44,12 +43,7 @@ namespace SocketIoDotNet
         private readonly SocketIoConfig _config;
         private readonly IdGeneratorFunc _idGenerator;
         private readonly IDictionary<string, ISocketIoTransport> _transports;
-        private readonly IDictionary<string, ISocketIoTransport> _transportsWithoutWebSockets;
         private readonly string _transportCommaList;
-        private readonly string _transportCommaListWithoutWebSockets;
-        private readonly string[] _tranportArrays;
-        private readonly string[] _tranportArraysWithoutWebSockets;
-
 
         private static readonly IEnumerable<ISocketIoTransport> DefaultTransports =
             new ISocketIoTransport[] 
@@ -71,29 +65,24 @@ namespace SocketIoDotNet
                 throw new ArgumentNullException("config");
 
             _config = config;
-            _idGenerator = config.GenerateId ?? DefaultIdGenerator;
+            _idGenerator = config.IdGenerator ?? DefaultIdGenerator;
 
             var transports = config.Transports ?? DefaultTransports;
 
             _transports = new Dictionary<string, ISocketIoTransport>();
-            _transportsWithoutWebSockets = new Dictionary<string, ISocketIoTransport>();
 
             // cache transports in dictionary for faster lookup
             foreach (var transport in transports)
             {
                 if (transport == null)
                     continue;
-                if (transport.Name != "websocket")
-                    _transportsWithoutWebSockets[transport.Name] = transport;
+                if(!_config.HostSupportsWebSockets && transport.Name == "websocket")
+                    continue;
                 _transports[transport.Name] = transport;
             }
 
             // cache so we don't have to join for every request
             _transportCommaList = string.Join(",", _transports.Keys);
-            _transportCommaListWithoutWebSockets = string.Join(",", _transportsWithoutWebSockets.Keys);
-
-            _tranportArrays = _transports.Keys.ToArray();
-            _tranportArraysWithoutWebSockets = _transportsWithoutWebSockets.Keys.ToArray();
         }
 
         public int Protocol
@@ -106,8 +95,6 @@ namespace SocketIoDotNet
             var data = CheckRequest(environment, headers);
             environment["socketiodotnet.HostProtocol"] = data.SocketIoProtcol = Protocol;
             environment["socketiodotnet.Transports"] = _transports;
-
-            //environment["socketionet.Transports"] = _transports.Keys.ToArray();
 
             if (data.IsStatic || string.IsNullOrEmpty(data.Transport) && data.Protocol == 0)
             {
@@ -133,12 +120,9 @@ namespace SocketIoDotNet
             if (data.Protocol != Protocol)
                 return StringResultTuple("Protocol version not supported", 500);
 
-            if (string.IsNullOrEmpty(data.Id))
-                return HandleHandshake(data, environment, headers, body);
-            else
-                return HandleHttpRequest(data, environment, headers, body);
-
-            throw new NotImplementedException();
+            return string.IsNullOrEmpty(data.Id)
+                       ? HandleHandshake(data, environment, headers, body)
+                       : HandleHttpRequest(data, environment, headers, body);
         }
 
         private static SocketIoRequestData CheckRequest(IDictionary<string, object> environment, IDictionary<string, string[]> headers)
@@ -148,13 +132,13 @@ namespace SocketIoDotNet
             var path = (string)environment["owin.RequestPath"];
             data.Path = path;
 
-            var match = path.IndexOf("/socket.io") >= 0;
+            var match = path.IndexOf("/socket.io", StringComparison.Ordinal) >= 0;
 
             var pieces = path.Split('/');
 
             environment["socketiodotnet.RequestPath"] = data.Path = path;
 
-            if (path.IndexOf("/") == 0)
+            if (path.IndexOf("/", StringComparison.Ordinal) == 0)
             {
                 if (!match)
                 {
@@ -176,7 +160,6 @@ namespace SocketIoDotNet
 
                 data.IsStatic = match;
             }
-
 
             return data;
         }
@@ -200,9 +183,9 @@ namespace SocketIoDotNet
 
             var hs = string.Join(":",
                 id,
-                _config.Heartbeats == 0 ? "" : _config.Heartbeats.ToString(),
-                _config.CloseTimeout == 0 ? "" : _config.CloseTimeout.ToString(),
-                _transportCommaListWithoutWebSockets);
+                _config.Heartbeats.HasValue ? _config.Heartbeats.Value.ToString(CultureInfo.InvariantCulture) : string.Empty,
+                _config.CloseTimeout.HasValue ? _config.CloseTimeout.Value.ToString(CultureInfo.InvariantCulture) : string.Empty,
+                _transportCommaList);
 
             var jsonP = false;
 

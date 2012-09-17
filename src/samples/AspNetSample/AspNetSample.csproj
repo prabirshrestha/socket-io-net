@@ -64,7 +64,7 @@
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="SimpleOwinAspNetHost.cs" />
-    <Content Include="samples\echo\EchoSample.cs" />
+    <Compile Include="samples\echo\EchoSample.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Web.Debug.config">

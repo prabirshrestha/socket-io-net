@@ -39,8 +39,12 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="OwinExtensions.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <None Include="SocketIo.cs" />
+    <Compile Include="SocketIo.cs" />
+    <Compile Include="SocketIoContext.cs" />
+    <Compile Include="SocketIoContextExtensions.cs" />
+    <None Include="SocketIoOld.cs" />
     <None Include="SocketIoConfig.cs" />
     <None Include="SocketIoRequestData.cs" />
     <None Include="Transports\ISocketIoTransport.cs" />

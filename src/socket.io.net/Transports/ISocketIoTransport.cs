@@ -1,14 +1,4 @@
-﻿using System.Collections.Generic;
-using System.IO;
-using System.Threading.Tasks;
-
-using ResultTuple = System.Tuple< //Result
-    System.Collections.Generic.IDictionary<string, object>, // Properties
-    int, // Status
-    System.Collections.Generic.IDictionary<string, string[]>, // Headers
-    System.Func< // CopyTo
-        System.IO.Stream, // Body
-        System.Threading.Tasks.Task>>; // Done
+﻿using System.Threading.Tasks;
 
 namespace SocketIoDotNet.Transports
 {
@@ -16,6 +6,6 @@ namespace SocketIoDotNet.Transports
     {
         string Name { get; }
 
-        Task<ResultTuple> HandleRequest(SocketIoRequestData data, IDictionary<string, object> environment, IDictionary<string, string[]> headers, Stream body);
+        Task HandleRequest(SocketIoContext context);
     }
 }

@@ -1,24 +1,34 @@
 ﻿namespace SocketIoDotNet
 {
     using System;
+    using System.Collections.Generic;
     using System.Globalization;
     using System.Threading.Tasks;
-
+    using SocketIoDotNet.Transports;
     using AppFunc = System.Func<System.Collections.Generic.IDictionary<string, object>, System.Threading.Tasks.Task>;
 
     public class SocketIo
     {
+        private readonly SocketIoConfig config = new SocketIoConfig();
+
+        public SocketIo Configure(Action<SocketIoConfig> config)
+        {
+            if (config == null) throw new ArgumentNullException("config");
+            config(this.config);
+            return this;
+        }
+
         public int Protocol
         {
             get { return 1; }
         }
 
-        public AppFunc App()
+        public AppFunc App(IDictionary<string, object> startupEnvironment = null)
         {
             return
                 async env =>
                 {
-                    var context = new SocketIoContext(env);
+                    var context = new SocketIoContext(env, this.config);
 
                     if (context.IsStatic || string.IsNullOrEmpty(context.Transport) && context.Protocol == 0)
                     {
@@ -74,16 +84,15 @@
                 return;
             }
 
-            var id = "123"; // todo: call id generator
-            int? heartbeats = 40;
-            int? closeTimeout = 40;
-            string supportedTransports = "xhr-polling";
+            var config = context.Configuration;
+
+            var id = config.IdGenerator(context); // todo: call id generator
 
             var hs = string.Join(":",
                  id,
-                 heartbeats.HasValue ? heartbeats.Value.ToString(CultureInfo.InvariantCulture) : string.Empty,
-                 closeTimeout.HasValue ? closeTimeout.Value.ToString(CultureInfo.InvariantCulture) : string.Empty,
-                 supportedTransports);
+                 config.Heartbeats.HasValue ? config.Heartbeats.Value.ToString(CultureInfo.InvariantCulture) : string.Empty,
+                 config.CloseTimeout.HasValue ? config.CloseTimeout.Value.ToString(CultureInfo.InvariantCulture) : string.Empty,
+                 config.TransportsStringList);
 
             var jsonP = false;
 
@@ -105,7 +114,12 @@
 
         private async Task HandleHttpRequest(SocketIoContext context)
         {
-            throw new NotImplementedException();
+            ISocketIoTransport transport;
+            var config = context.Configuration;
+            if (!config.TransportDictionary.TryGetValue(context.Transport, out transport))
+                await context.WriteString("transport not supported", 500);
+            else
+                await transport.HandleRequest(context);
         }
     }
 }

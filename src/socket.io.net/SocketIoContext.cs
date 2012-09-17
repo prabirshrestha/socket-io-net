@@ -9,15 +9,17 @@
         private IDictionary<string, object> environment;
         private int responseStatusCode;
 
-        public SocketIoContext(IDictionary<string, object> environment)
+        public SocketIoContext(IDictionary<string, object> environment, SocketIoConfig config)
         {
             this.environment = environment;
+            this.Configuration = config;
             Path = (string)environment["owin.RequestPath"];
             environment["socketiodotnet.RequestPath"] = Path;
+            environment["socketiodotnet.Configuration"] = config;
             RequestBody = (Stream)environment["owin.RequestBody"];
             ResponseBody = (Stream)environment["owin.ResponseBody"];
-            RequestHeaders = (IDictionary<string, string[]>) environment["owin.RequestHeaders"];
-            ResponseHeaders = (IDictionary<string, string[]>) environment["owin.ResponseHeaders"];
+            RequestHeaders = (IDictionary<string, string[]>)environment["owin.RequestHeaders"];
+            ResponseHeaders = (IDictionary<string, string[]>)environment["owin.ResponseHeaders"];
             ResponseStatusCode = 200;
 
             var match = Path.IndexOf("/socket.io", StringComparison.Ordinal) >= 0;
@@ -46,6 +48,8 @@
                 IsStatic = match;
             }
         }
+
+        public SocketIoConfig Configuration { get; private set; }
 
         public string Path { get; private set; }
         public string Transport { get; private set; }

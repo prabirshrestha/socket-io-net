@@ -45,13 +45,13 @@
     <Compile Include="SocketIoContext.cs" />
     <Compile Include="SocketIoContextExtensions.cs" />
     <None Include="SocketIoOld.cs" />
-    <None Include="SocketIoConfig.cs" />
+    <Compile Include="SocketIoConfig.cs" />
     <None Include="SocketIoRequestData.cs" />
-    <None Include="Transports\ISocketIoTransport.cs" />
+    <Compile Include="Transports\ISocketIoTransport.cs" />
     <None Include="Transports\SocketIoHtmlFileTransport.cs" />
     <None Include="Transports\SocketIoJsonpTransport.cs" />
     <None Include="Transports\SocketIoWebSocketTransport.cs" />
-    <None Include="Transports\SocketIoXhrPollingTransport.cs" />
+    <Compile Include="Transports\SocketIoXhrPollingTransport.cs" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="assets\socket.io.js" />

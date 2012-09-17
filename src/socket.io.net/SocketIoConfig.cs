@@ -3,13 +3,12 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 
-using IdGeneratorFunc = System.Func< // generated id
-    System.Collections.Generic.IDictionary<string, object>, // environment
-    System.Collections.Generic.IDictionary<string, string[]>, // headers
-    string>; // id
-
 namespace SocketIoDotNet
 {
+    using IdGeneratorFunc = System.Func< // generated id
+        SocketIoContext, // environment
+        string>; // id
+
     public class SocketIoConfig
     {
         private const int DefaultHeartbeats = 25;
@@ -18,10 +17,10 @@ namespace SocketIoDotNet
         private static readonly ISocketIoTransport[] DefaultTransports =
            new ISocketIoTransport[] 
             { 
-                new SocketIoWebSocketTransport(),
-                new SocketIoHtmlFileTransport(),
+                //new SocketIoWebSocketTransport(),
+                //new SocketIoHtmlFileTransport(),
                 new SocketIoXhrPollingTransport(),
-                new SocketIoJsonpTransport(),
+                //new SocketIoJsonpTransport(),
             };
 
         private IdGeneratorFunc _idGenerator;
@@ -90,7 +89,7 @@ namespace SocketIoDotNet
             }
         }
 
-        private static string DefaultIdGenerator(IDictionary<string, object> environment, IDictionary<string, string[]> headers)
+        private static string DefaultIdGenerator(SocketIoContext context)
         {
             return Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
         }

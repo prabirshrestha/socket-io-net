@@ -12,7 +12,7 @@ namespace SocketIoDotNet.Transports
 
         public async Task HandleRequest(SocketIoContext context)
         {
-            throw new NotImplementedException();
+            await context.WriteString("hi", 200);
         }
     }
 }

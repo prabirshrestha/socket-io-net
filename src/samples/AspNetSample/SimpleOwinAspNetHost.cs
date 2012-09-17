@@ -1,9 +1,14 @@
 ﻿//#define ASPNET_WEBSOCKETS
 
-namespace SimpleOwinAspNetHost
+// VERSION: 
+// https://github.com/prabirshrestha/simple-owin
+
+namespace SimpleOwin.Hosts.AspNet
 {
     using System;
     using System.Collections.Generic;
+    using System.Diagnostics;
+    using System.IO;
     using System.Linq;
 #if ASPNET_WEBSOCKETS
     using System.Net.WebSockets;
@@ -13,31 +18,14 @@ namespace SimpleOwinAspNetHost
     using System.Web;
     using System.Web.Routing;
 
-    using AppAction = System.Func< // Call
-            System.Collections.Generic.IDictionary<string, object>, // Environment
-            System.Collections.Generic.IDictionary<string, string[]>, // Headers
-            System.IO.Stream, // Body
-            System.Threading.Tasks.Task<System.Tuple< // Result
-                System.Collections.Generic.IDictionary<string, object>, // Properties
-                int, // Status
-                System.Collections.Generic.IDictionary<string, string[]>, // Headers
-                System.Func< // CopyTo
-                    System.IO.Stream, // Body
-                    System.Threading.Tasks.Task>>>>; // Done
-
-    using ResultTuple = System.Tuple< //Result
-        System.Collections.Generic.IDictionary<string, object>, // Properties
-        int, // Status
-        System.Collections.Generic.IDictionary<string, string[]>, // Headers
-        System.Func< // CopyTo
-            System.IO.Stream, // Body
-            System.Threading.Tasks.Task>>; // Done
-
-    using BodyAction = System.Func< // CopyTo
-        System.IO.Stream, // Body
-        System.Threading.Tasks.Task>; // Done
+    using AppFunc = System.Func<System.Collections.Generic.IDictionary<string, object>, System.Threading.Tasks.Task>;
 
 #if ASPNET_WEBSOCKETS
+
+    using WebSocketFunc =
+       System.Func<
+           System.Collections.Generic.IDictionary<string, object>, // WebSocket Environment
+           System.Threading.Tasks.Task>; // Complete
 
     using WebSocketSendAsync = System.Func<
                 System.ArraySegment<byte>, // data
@@ -46,7 +34,7 @@ namespace SimpleOwinAspNetHost
                 System.Threading.CancellationToken, // cancel
                 System.Threading.Tasks.Task>;
 
-    using WebSocketReceiveResultTuple = System.Tuple<
+    using WebSocketReceiveTuple = System.Tuple<
                         int, // messageType
                         bool, // endOfMessage
                         int?, // count
@@ -57,7 +45,7 @@ namespace SimpleOwinAspNetHost
                 System.ArraySegment<byte>, // data
                 System.Threading.CancellationToken, // cancel
                 System.Threading.Tasks.Task<
-                    System.Tuple<
+                    System.Tuple< // WebSocketReceiveTuple
                         int, // messageType
                         bool, // endOfMessage
                         int?, // count
@@ -70,47 +58,30 @@ namespace SimpleOwinAspNetHost
                 System.Threading.CancellationToken, // cancel
                 System.Threading.Tasks.Task>;
 
-#pragma warning disable 811
-    using WebSocketAction = System.Func<
-            System.Func< // WebSocketSendAsync 
-                System.ArraySegment<byte>, // data
-                int, // message type
-                bool, // end of message
-                System.Threading.CancellationToken, // cancel
-                System.Threading.Tasks.Task>,
-            System.Func< // WebSocketReceiveAsync
-                System.ArraySegment<byte>, // data
-                System.Threading.CancellationToken, // cancel
-                System.Threading.Tasks.Task<
-                    System.Tuple<
-                        int, // messageType
-                        bool, // endOfMessage
-                        int?, // count
-                        int?, // closeStatus
-                        string>>>, // closeStatusDescription
-             System.Func< // WebSocketCloseAsync
-                int, // closeStatus
-                string, // closeDescription
-                System.Threading.CancellationToken, // cancel
-                System.Threading.Tasks.Task>,
-            System.Threading.Tasks.Task>; // complete
-#pragma warning restore 811
-
 #endif
 
     public class SimpleOwinAspNetRouteHandler : IRouteHandler
     {
         private readonly SimpleOwinAspNetHandler _simpleOwinAspNetHandler;
 
-        public SimpleOwinAspNetRouteHandler(AppAction app)
+        public SimpleOwinAspNetRouteHandler(AppFunc app)
             : this(app, null)
         {
-            _simpleOwinAspNetHandler = new SimpleOwinAspNetHandler(app);
         }
 
-        public SimpleOwinAspNetRouteHandler(AppAction app, string root)
+        public SimpleOwinAspNetRouteHandler(AppFunc app, string root)
         {
             _simpleOwinAspNetHandler = new SimpleOwinAspNetHandler(app, root);
+        }
+
+        public SimpleOwinAspNetRouteHandler(IEnumerable<Func<AppFunc, AppFunc>> apps)
+            : this(apps, null)
+        {
+        }
+
+        public SimpleOwinAspNetRouteHandler(IEnumerable<Func<AppFunc, AppFunc>> apps, string root)
+        {
+            _simpleOwinAspNetHandler = new SimpleOwinAspNetHandler(apps, root);
         }
 
         public IHttpHandler GetHttpHandler(RequestContext requestContext)
@@ -121,33 +92,59 @@ namespace SimpleOwinAspNetHost
 
     public class SimpleOwinAspNetHandler : IHttpAsyncHandler
     {
-        private readonly AppAction _app;
+        private readonly AppFunc _appFunc;
         private readonly string _root;
 
-        public SimpleOwinAspNetHandler()
-            : this(null)
+        private static readonly Task CompletedTask;
+
+        static SimpleOwinAspNetHandler()
         {
+            var tcs = new TaskCompletionSource<int>();
+            tcs.TrySetResult(0);
+            CompletedTask = tcs.Task;
         }
 
-        public SimpleOwinAspNetHandler(AppAction app)
+        public SimpleOwinAspNetHandler(AppFunc app)
             : this(app, null)
         {
         }
 
-        public SimpleOwinAspNetHandler(AppAction app, string root)
+        public SimpleOwinAspNetHandler(AppFunc app, string root)
         {
             if (app == null)
-            {
-                // get singleton app
-                throw new NotImplementedException();
-            }
+                throw new ArgumentNullException("app");
 
-            _app = app;
-            if (!string.IsNullOrEmpty(root))
+            _appFunc = app;
+            if (!string.IsNullOrWhiteSpace(root))
             {
                 if (!root.StartsWith("/"))
                     _root += "/" + root;
             }
+        }
+
+        public SimpleOwinAspNetHandler(IEnumerable<Func<AppFunc, AppFunc>> apps)
+            : this(apps, null)
+        {
+        }
+
+        public SimpleOwinAspNetHandler(IEnumerable<Func<AppFunc, AppFunc>> apps, string root)
+            : this(ToOwinApp(apps), root)
+        {
+        }
+
+        public static AppFunc ToOwinApp(IEnumerable<Func<AppFunc, AppFunc>> apps)
+        {
+            if (apps == null)
+                throw new ArgumentNullException("apps");
+
+            return
+                env =>
+                {
+                    var enumerator = apps.GetEnumerator();
+                    AppFunc next = null;
+                    next = env2 => enumerator.MoveNext() ? enumerator.Current(env3 => next(env3))(env2) : CompletedTask;
+                    return next(env);
+                };
         }
 
         public void ProcessRequest(HttpContext context)
@@ -190,132 +187,118 @@ namespace SimpleOwinAspNetHost
                 .Select(key => new KeyValuePair<string, object>(key, request.ServerVariables.Get(key)));
 
             var env = new Dictionary<string, object>();
-            env[OwinConstants.Version] = "1.0";
-            env[OwinConstants.RequestMethod] = request.HttpMethod;
-            env[OwinConstants.RequestScheme] = request.Url.Scheme;
-            env[OwinConstants.RequestPathBase] = pathBase;
-            env[OwinConstants.RequestPath] = path;
-            env[OwinConstants.RequestQueryString] = request.ServerVariables["QUERY_STRING"];
-            env[OwinConstants.RequestProtocol] = request.ServerVariables["SERVER_PROTOCOL"];
+            env["owin.Version"] = "1.0";
+            env["owin.RequestMethod"] = request.HttpMethod;
+            env["owin.RequestScheme"] = request.Url.Scheme;
+            env["owin.RequestPathBase"] = pathBase;
+            env["owin.RequestPath"] = path;
+            env["owin.RequestQueryString"] = request.ServerVariables["QUERY_STRING"];
+            env["owin.RequestProtocol"] = request.ServerVariables["SERVER_PROTOCOL"];
+            env["owin.RequestBody"] = request.InputStream;
+            env["owin.RequestHeaders"] = request.Headers.AllKeys
+                    .ToDictionary(x => x, x => request.Headers.GetValues(x), StringComparer.OrdinalIgnoreCase);
+
+            env["owin.CallCancelled"] = CancellationToken.None;
+
+            env["owin.ResponseHeaders"] = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+
+            int? responseStatusCode = null;
+
+            env["owin.ResponseBody"] =
+                new TriggerStream(response.OutputStream)
+                {
+                    OnFirstWrite = () =>
+                    {
+                        responseStatusCode = Get<int>(env, "owin.ResponseStatusCode", 200);
+                        response.StatusCode = responseStatusCode.Value;
+
+                        object reasonPhrase;
+                        if (env.TryGetValue("owin.ResponseReasonPhrase", out reasonPhrase))
+                            response.StatusDescription = Convert.ToString(reasonPhrase);
+
+                        var responseHeaders = Get<IDictionary<string, string[]>>(env, "owin.ResponseHeaders", null);
+                        if (responseHeaders != null)
+                        {
+                            foreach (var responseHeader in responseHeaders)
+                            {
+                                foreach (var headerValue in responseHeader.Value)
+                                    response.AddHeader(responseHeader.Key, headerValue);
+                            }
+                        }
+                    }
+                };
+
+            SetEnvironmentServerVariables(env, serverVarsToAddToEnv);
+
             env["aspnet.HttpContextBase"] = context;
-            env[OwinConstants.CallCompleted] = tcs.Task;
 
 #if ASPNET_WEBSOCKETS
             if (context.IsWebSocketRequest)
-                env[OwinConstants.WebSocketSupport] = "WebSocketFunc";
+            {
+                env["websocket.Version"] = "1.0";
+                env["websocket.Support"] = "WebSocketFunc";
+            }
 #endif
 
-            foreach (var kv in serverVarsToAddToEnv)
-                env["server." + kv.Key] = kv.Value;
-
-            var requestHeaders = request.Headers.AllKeys
-                    .ToDictionary(x => x, x => request.Headers.GetValues(x), StringComparer.OrdinalIgnoreCase);
-
-            var requestStream = request.InputStream;
+            response.BufferOutput = false;
 
             try
             {
-                _app.Invoke(env, requestHeaders, requestStream)
-                    .ContinueWith(taskResultParameters =>
+                _appFunc(env)
+                    .ContinueWith(t =>
                     {
-                        if (taskResultParameters.IsFaulted)
-                        {
-                            tcs.TrySetException(taskResultParameters.Exception.InnerExceptions);
-                        }
-                        else if (taskResultParameters.IsCanceled)
-                        {
-                            tcs.TrySetCanceled();
-                        }
+                        if (t.IsFaulted) tcs.TrySetException(t.Exception.InnerExceptions);
+                        else if (t.IsCanceled) tcs.TrySetCanceled();
                         else
                         {
-                            try
-                            {
-                                var resultParameters = taskResultParameters.Result;
-                                var properties = resultParameters.Item1;
-                                var responseStatus = resultParameters.Item2;
-                                var responseHeader = resultParameters.Item3;
-                                var responseCopyTo = resultParameters.Item4;
-
-                                response.BufferOutput = false;
-                                response.StatusCode = responseStatus;
-
-                                object reasonPhrase;
-                                if (properties.TryGetValue(OwinConstants.ReasonPhrase, out reasonPhrase))
-                                    response.StatusDescription = Convert.ToString(reasonPhrase);
-
-                                if (responseHeader != null)
-                                {
-                                    foreach (var header in responseHeader)
-                                    {
-                                        foreach (var headerValue in header.Value)
-                                            response.AddHeader(header.Key, headerValue);
-                                    }
-                                }
-
 #if ASPNET_WEBSOCKETS
-                                object tempWsBodyDelegate;
-                                if (responseStatus == 101 &&
-                                    properties.TryGetValue(OwinConstants.WebSocketBodyDelegte, out tempWsBodyDelegate) &&
-                                    tempWsBodyDelegate != null)
-                                {
-                                    var wsBodyDelegate = (WebSocketAction)tempWsBodyDelegate;
-                                    context.AcceptWebSocketRequest(async websocketContext =>
-                                    {
-                                        env["aspnet.AspNetWebSocketContext"] = websocketContext;
-                                        var webSocket = websocketContext.WebSocket;
+                            object tempWsBodyDelegate;
 
-                                        await wsBodyDelegate(WebSocketSendAsync(webSocket), WebSocketReceiveAsync(webSocket), WebSocketCloseAsync(webSocket));
+                            if (responseStatusCode == null)
+                                responseStatusCode = Get<int>(env, "owin.ResponseStatusCode", 200);
 
-                                        switch (webSocket.State)
-                                        {
-                                            case WebSocketState.Closed:  // closed gracefully, no action needed
-                                            case WebSocketState.Aborted: // closed abortively, no action needed
-                                                break;
-                                            case WebSocketState.CloseReceived:
-                                                await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty, CancellationToken.None);
-                                                break;
-                                            case WebSocketState.Open:
-                                            case WebSocketState.CloseSent: // No close received, abort so we don't have to drain the pipe.
-                                                websocketContext.WebSocket.Abort();
-                                                break;
-                                            default:
-                                                throw new ArgumentOutOfRangeException("state", webSocket.State, string.Empty);
-                                        }
-
-                                        if (responseCopyTo != null)
-                                            await responseCopyTo(response.OutputStream);
-
-                                        response.Close();
-                                    });
-
-                                    tcs.TrySetResult(() => { });
-                                }
-                                else
-#endif
-                                    if (responseCopyTo != null)
-                                    {
-                                        responseCopyTo(response.OutputStream)
-                                            .ContinueWith(taskCopyTo =>
-                                            {
-                                                if (taskResultParameters.IsFaulted)
-                                                    tcs.TrySetException(taskResultParameters.Exception.InnerExceptions);
-                                                else if (taskResultParameters.IsCanceled)
-                                                    tcs.TrySetCanceled();
-                                                else
-                                                    tcs.TrySetResult(() => { });
-                                            });
-                                    }
-                                    else
-                                    {
-                                        // if you reach here it means you didn't implmement AppAction correctly
-                                        // tcs.TrySetResult(() => { });
-                                    }
-                            }
-                            catch (Exception ex)
+                            if (responseStatusCode.Value == 101 &&
+                                env.TryGetValue("websocket.Func", out tempWsBodyDelegate) &&
+                                tempWsBodyDelegate != null)
                             {
-                                tcs.TrySetException(ex);
+                                var wsBodyDelegate = (WebSocketFunc)tempWsBodyDelegate;
+                                context.AcceptWebSocketRequest(async websocketContext => // todo: AcceptWebSocketRequest throws error
+                                {
+                                    var webSocket = websocketContext.WebSocket;
+
+                                    var wsEnv = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+                                    wsEnv["websocket.SendAsyncFunc"] = WebSocketSendAsync(webSocket);
+                                    wsEnv["websocket.ReceiveAsyncFunc"] = WebSocketReceiveAsync(webSocket);
+                                    wsEnv["websocket.CloseAsyncFunc"] = WebSocketCloseAsync(webSocket);
+                                    wsEnv["websocket.Version"] = "1.0";
+                                    wsEnv["websocket.CallCancelled"] = CancellationToken.None;
+                                    wsEnv["aspnet.AspNetWebSocketContext"] = websocketContext;
+
+                                    await wsBodyDelegate(wsEnv);
+
+                                    switch (webSocket.State)
+                                    {
+                                        case WebSocketState.Closed:  // closed gracefully, no action needed
+                                        case WebSocketState.Aborted: // closed abortively, no action needed
+                                            break;
+                                        case WebSocketState.CloseReceived:
+                                            await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty, CancellationToken.None);
+                                            break;
+                                        case WebSocketState.Open:
+                                        case WebSocketState.CloseSent: // No close received, abort so we don't have to drain the pipe.
+                                            websocketContext.WebSocket.Abort();
+                                            break;
+                                        default:
+                                            throw new ArgumentOutOfRangeException("state", webSocket.State, string.Empty);
+                                    }
+
+                                    response.Close();
+                                });
                             }
+#endif
+                            tcs.TrySetResult(() => { });
                         }
+
                     });
             }
             catch (Exception ex)
@@ -340,12 +323,29 @@ namespace SimpleOwinAspNetHost
             }
         }
 
+        [DebuggerStepThrough]
+        private static void SetEnvironmentServerVariables(Dictionary<string, object> env, IEnumerable<KeyValuePair<string, object>> serverVarsToAddToEnv)
+        {
+            foreach (var kv in serverVarsToAddToEnv)
+                env["server." + kv.Key] = kv.Value;
+        }
+
+        private static T Get<T>(IDictionary<string, object> env, string key, T defaultValue)
+        {
+            object value;
+            return env.TryGetValue(key, out value) && value is T ? (T)value : defaultValue;
+        }
+
         public static IDictionary<string, object> GetStartupProperties()
         {
             var properties = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
-            properties[OwinConstants.Version] = "1.0";
+            properties["owin.Version"] = "1.0";
 #if ASPNET_WEBSOCKETS
-            properties[OwinConstants.WebSocketSupport] = "WebSocketFunc";
+            if (Environment.OSVersion.Platform == PlatformID.Win32NT && Environment.OSVersion.Version >= new Version(6, 2) || HttpRuntime.IISVersion != null && HttpRuntime.IISVersion.Major >= 8)
+            {
+                properties["websocket.Version"] = "1.0";
+                properties["websocket.Support"] = "WebSocketFunc";
+            }
 #endif
             return properties;
         }
@@ -363,7 +363,7 @@ namespace SimpleOwinAspNetHost
             return async (buffer, cancel) =>
             {
                 var nativeResult = await webSocket.ReceiveAsync(buffer, cancel);
-                return new WebSocketReceiveResultTuple(
+                return new WebSocketReceiveTuple(
                     EnumToOpCode(nativeResult.MessageType),
                     nativeResult.EndOfMessage,
                     (nativeResult.MessageType == WebSocketMessageType.Close ? null : (int?)nativeResult.Count),
@@ -404,20 +404,151 @@ namespace SimpleOwinAspNetHost
 
 #endif
 
-        private static class OwinConstants
+        /// <remarks>TriggerStream pulled from Gate source code.</remarks>
+        private class TriggerStream : Stream
         {
-            public const string Version = "owin.Version";
-            public const string RequestScheme = "owin.RequestScheme";
-            public const string RequestMethod = "owin.RequestMethod";
-            public const string RequestPathBase = "owin.RequestPathBase";
-            public const string RequestPath = "owin.RequestPath";
-            public const string RequestQueryString = "owin.RequestQueryString";
-            public const string RequestProtocol = "owin.RequestProtocol";
-            public const string ReasonPhrase = "owin.ReasonPhrase";
-            public const string CallCompleted = "owin.CallCompleted";
+            public TriggerStream(Stream innerStream)
+            {
+                InnerStream = innerStream;
+            }
 
-            public const string WebSocketSupport = "websocket.Support";
-            public const string WebSocketBodyDelegte = "websocket.Func";
+            public Stream InnerStream { get; set; }
+
+            public Action OnFirstWrite { get; set; }
+
+            private bool IsStarted { get; set; }
+
+            public override bool CanRead
+            {
+                get { return InnerStream.CanRead; }
+            }
+
+            public override bool CanWrite
+            {
+                get { return InnerStream.CanWrite; }
+            }
+
+            public override bool CanSeek
+            {
+                get { return InnerStream.CanSeek; }
+            }
+
+            public override bool CanTimeout
+            {
+                get { return InnerStream.CanTimeout; }
+            }
+
+            public override int WriteTimeout
+            {
+                get { return InnerStream.WriteTimeout; }
+                set { InnerStream.WriteTimeout = value; }
+            }
+
+            public override int ReadTimeout
+            {
+                get { return InnerStream.ReadTimeout; }
+                set { InnerStream.ReadTimeout = value; }
+            }
+
+            public override long Position
+            {
+                get { return InnerStream.Position; }
+                set { InnerStream.Position = value; }
+            }
+
+            public override long Length
+            {
+                get { return InnerStream.Length; }
+            }
+
+            public override void Close()
+            {
+                InnerStream.Close();
+            }
+
+            protected override void Dispose(bool disposing)
+            {
+                if (disposing)
+                {
+                    InnerStream.Dispose();
+                }
+            }
+
+            public override string ToString()
+            {
+                return InnerStream.ToString();
+            }
+
+            public override long Seek(long offset, SeekOrigin origin)
+            {
+                return InnerStream.Seek(offset, origin);
+            }
+
+            public override void SetLength(long value)
+            {
+                InnerStream.SetLength(value);
+            }
+
+            public override int ReadByte()
+            {
+                return InnerStream.ReadByte();
+            }
+
+            public override int Read(byte[] buffer, int offset, int count)
+            {
+                return InnerStream.Read(buffer, offset, count);
+            }
+
+            public override IAsyncResult BeginRead(byte[] buffer, int offset, int count, AsyncCallback callback, object state)
+            {
+                return InnerStream.BeginRead(buffer, offset, count, callback, state);
+            }
+
+            public override int EndRead(IAsyncResult asyncResult)
+            {
+                return InnerStream.EndRead(asyncResult);
+            }
+
+            public override void WriteByte(byte value)
+            {
+                Start();
+                InnerStream.WriteByte(value);
+            }
+
+            public override void Write(byte[] buffer, int offset, int count)
+            {
+                Start();
+                InnerStream.Write(buffer, offset, count);
+            }
+
+            public override IAsyncResult BeginWrite(byte[] buffer, int offset, int count, AsyncCallback callback, object state)
+            {
+                Start();
+                return InnerStream.BeginWrite(buffer, offset, count, callback, state);
+            }
+
+            public override void EndWrite(IAsyncResult asyncResult)
+            {
+                InnerStream.EndWrite(asyncResult);
+            }
+
+            public override void Flush()
+            {
+                Start();
+                InnerStream.Flush();
+            }
+
+            private void Start()
+            {
+                if (!IsStarted)
+                {
+                    IsStarted = true;
+                    if (OnFirstWrite != null)
+                    {
+                        OnFirstWrite();
+                    }
+                }
+            }
         }
     }
 }

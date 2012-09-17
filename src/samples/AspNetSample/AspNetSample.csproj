@@ -67,7 +67,7 @@
       <DependentUpon>Global.asax</DependentUpon>
     </Compile>
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="samples\echo\EchoSample.cs" />
+    <Content Include="samples\echo\EchoSample.cs" />
     <Compile Include="SimpleOwinAspNetHost.cs" />
   </ItemGroup>
   <ItemGroup>
